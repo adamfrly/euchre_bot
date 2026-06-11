@@ -1,3 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments (anchored to repo root so they don't match src/euchre_bot/env/)
+/.venv/
+/venv/
+/env/
+
+# Experiment outputs
+runs/
+checkpoints/
+*.pt
+*.pth
+
+# Legacy
 data/
 rlpractice/
 OpenAI_Practice/
