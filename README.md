@@ -60,10 +60,17 @@ The baselines have a no-op `learn`, so those training curves are flat on purpose
 
 ## Your task: implement the algorithms
 
-Open [`docs/implementing_algorithms.md`](docs/implementing_algorithms.md) and
-start with `src/euchre_bot/algos/reinforce.py`. Each stub spells out the math,
-the update recipe, the Euchre-specific masking gotchas, and `# TODO(you)`
-markers. Suggested order: **REINFORCE → A2C → PPO → DQN**.
+`src/euchre_bot/algos/reinforce.py` is **fully implemented as a worked reference**
+— read and run it first. `a2c.py`, `ppo.py`, and `dqn.py` are stubs that reuse
+its skeleton; each spells out the math, the update recipe, the Euchre-specific
+masking gotchas, and `# TODO(you)` markers. Start with
+[`docs/implementing_algorithms.md`](docs/implementing_algorithms.md). Suggested
+order: **REINFORCE (done) → A2C → PPO → DQN**.
+
+```bash
+# train the reference REINFORCE against a fixed opponent (clean learning signal)
+python examples/train.py --agent reinforce --opponent random --iterations 400
+```
 
 You'll know it's working when `eval_vs_random/win_rate` climbs above 0.5 and
 then `eval_vs_heuristic/win_rate` follows. **Judge progress by evaluation against

@@ -61,12 +61,23 @@ def main() -> None:
     parser.add_argument("--episodes-per-iter", type=int, default=128)
     parser.add_argument("--eval-every", type=int, default=10)
     parser.add_argument("--eval-hands", type=int, default=500)
+    # Who the learner trains against. "self" is pure self-play (all four seats
+    # share the policy). For REINFORCE the self-play gradient is weak because the
+    # zero-sum seats cancel -- training against a fixed "random"/"heuristic"
+    # opponent gives a cleaner signal. Stronger algorithms cope better with self.
+    parser.add_argument("--opponent", choices=["self", "random", "heuristic"], default="self")
     parser.add_argument("--run-name", default=None)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
     env = EuchreEnv(seed=args.seed)
     learner = make_agent(args.agent)
+
+    train_opponent = None
+    if args.opponent == "random":
+        train_opponent = RandomAgent(seed=999)
+    elif args.opponent == "heuristic":
+        train_opponent = HeuristicAgent()
 
     # Fixed reference opponents -- the only honest measure of progress. We track
     # both so you can see the agent first surpass random, then close on heuristic.
@@ -75,6 +86,7 @@ def main() -> None:
     # Everything you'd want to compare runs by later. Logged once as MLflow params.
     params = {
         "agent": args.agent,
+        "opponent": args.opponent,
         "iterations": args.iterations,
         "episodes_per_iter": args.episodes_per_iter,
         "eval_hands": args.eval_hands,
@@ -83,11 +95,11 @@ def main() -> None:
 
     with MetricsLogger(
         experiment="euchre-bot",
-        run_name=args.run_name or args.agent,
+        run_name=args.run_name or f"{args.agent}_vs_{args.opponent}",
         params=params,
     ) as logger:
         for iteration in range(1, args.iterations + 1):
-            batch = collect_batch(env, learner, args.episodes_per_iter)
+            batch = collect_batch(env, learner, args.episodes_per_iter, opponent=train_opponent)
             metrics = learner.learn(batch)  # no-op for baselines; real for your algos
             logger.log(iteration, metrics, prefix="train/")
 

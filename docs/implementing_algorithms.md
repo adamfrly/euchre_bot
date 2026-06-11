@@ -71,12 +71,24 @@ def discounted_returns(rewards, gamma):
 
 ## Suggested order
 
-### 1. REINFORCE (`reinforce.py`) — start here
-The minimal policy gradient. Build an MLP policy, implement masked `act`, and in
-`learn`: compute returns, normalise them across the batch, recompute masked
-log-probs, and step on `-(log_prob * return).mean()`. Success criterion: it
-should beat `RandomAgent` (eval win-rate well above 0.5) within a few hundred
-iterations. If it doesn't, suspect masking or a returns sign error first.
+### 1. REINFORCE (`reinforce.py`) — ✅ done, your reference
+This one is **fully implemented** as a worked example — read it end to end
+before you write the others; they reuse its skeleton (masked `act`, the
+`_discounted_returns` helper, the flatten-then-normalise pattern in `learn`).
+The minimal policy gradient: an MLP policy, masked `act`, and in `learn` compute
+returns, normalise across the batch, recompute masked log-probs, step on
+`-(log_prob * return).mean()`. Success criterion: it beats `RandomAgent` (clearly
+positive eval point-diff) within a few hundred iterations. If yours doesn't,
+suspect masking or a returns sign error first.
+
+> **A real result worth understanding.** Trained in *pure self-play* the
+> reference REINFORCE barely improves: the four seats share one policy and the
+> rewards are zero-sum, so their gradients largely cancel. Trained against a
+> *fixed* opponent (`python examples/train.py --agent reinforce --opponent
+> random`) the signal is clean and it clearly pulls ahead on point
+> differential. This is exactly why the later algorithms add a value baseline,
+> an entropy bonus, and (eventually) a frozen-opponent pool — vanilla REINFORCE
+> is the floor, not the goal.
 
 ### 2. A2C (`a2c.py`)
 Add a value head and subtract it as a baseline (advantage = return − value), add
