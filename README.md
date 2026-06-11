@@ -34,13 +34,16 @@ can run the rules, the environment, and the baselines with just numpy.
 pip install -e .
 
 # add the deep-learning stack when you start on the algorithms
-pip install -e ".[learn]"      # torch + tensorboard
+pip install -e ".[learn]"      # torch
+
+# add experiment monitoring (MLflow); optional — see docs/monitoring.md
+pip install -e ".[monitor]"    # mlflow
 
 # dev tools (tests + linter)
 pip install -e ".[dev]"
 ```
 
-(Examples above use `pip`; `uv venv && uv pip install -e ".[dev,learn]"` works too.)
+(Examples above use `pip`; `uv venv && uv pip install -e ".[dev,learn,monitor]"` works too.)
 
 ## Try it now
 
@@ -48,7 +51,7 @@ pip install -e ".[dev]"
 pytest                                   # 50 tests, ~0.2s
 python -m euchre_bot.play                # play a hand vs the heuristic bots
 python examples/train.py --agent heuristic --iterations 20   # exercise the full pipeline
-tensorboard --logdir runs                # watch the curves
+mlflow ui                                # browse runs at http://localhost:5000
 ```
 
 The baselines have a no-op `learn`, so those training curves are flat on purpose
@@ -74,5 +77,5 @@ the fixed baselines, never by self-play reward or training loss** — see
 | [`docs/euchre_rules.md`](docs/euchre_rules.md) | The exact variant and scoring implemented |
 | [`docs/environment.md`](docs/environment.md) | Env API, observation vector, action space, rewards |
 | [`docs/implementing_algorithms.md`](docs/implementing_algorithms.md) | **Step-by-step guide to the part you build** |
-| [`docs/monitoring.md`](docs/monitoring.md) | Observing/analyzing runs; TensorBoard and alternatives |
+| [`docs/monitoring.md`](docs/monitoring.md) | Observing/analyzing runs with MLflow (install, log, compare, registry) |
 | [`docs/rl_best_practices.md`](docs/rl_best_practices.md) | General practices for writing RL projects |

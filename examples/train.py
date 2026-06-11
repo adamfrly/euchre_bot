@@ -1,7 +1,7 @@
 """End-to-end training harness: collect self-play, learn, log, and evaluate.
 
 This script is the template you will actually run. Out of the box it works with
-the *baseline* agents so you can exercise the full pipeline (and see TensorBoard
+the *baseline* agents so you can exercise the full pipeline (and see MLflow
 populate) before any algorithm is written -- their ``learn`` is a no-op, so the
 curves are flat, which is itself a useful "this is what no learning looks like"
 reference. Once you implement an agent in ``euchre_bot.algos``, pass its name and
@@ -12,9 +12,9 @@ Run::
     python examples/train.py --agent heuristic --iterations 50
     python examples/train.py --agent ppo --iterations 2000 --eval-every 25
 
-Then, in another terminal::
+Then, in another terminal, browse the runs (serves ./mlruns at :5000)::
 
-    tensorboard --logdir runs
+    mlflow ui
 """
 
 from __future__ import annotations
@@ -72,7 +72,20 @@ def main() -> None:
     # both so you can see the agent first surpass random, then close on heuristic.
     references = {"vs_random": RandomAgent(seed=123), "vs_heuristic": HeuristicAgent()}
 
-    with MetricsLogger(run_name=args.run_name or f"{args.agent}") as logger:
+    # Everything you'd want to compare runs by later. Logged once as MLflow params.
+    params = {
+        "agent": args.agent,
+        "iterations": args.iterations,
+        "episodes_per_iter": args.episodes_per_iter,
+        "eval_hands": args.eval_hands,
+        "seed": args.seed,
+    }
+
+    with MetricsLogger(
+        experiment="euchre-bot",
+        run_name=args.run_name or args.agent,
+        params=params,
+    ) as logger:
         for iteration in range(1, args.iterations + 1):
             batch = collect_batch(env, learner, args.episodes_per_iter)
             metrics = learner.learn(batch)  # no-op for baselines; real for your algos

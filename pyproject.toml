@@ -19,6 +19,13 @@ dependencies = [
 learn = [
     "torch>=2.0",
 ]
+# Experiment monitoring. This project uses MLflow (free, open-source, local --
+# no account or server). MetricsLogger logs params, metrics, and artifacts to
+# MLflow; browse with `mlflow ui`. It is optional: without it, logging still
+# goes to stdout and runs/<name>/metrics.jsonl. See docs/monitoring.md.
+monitor = [
+    "mlflow>=2.9",
+]
 dev = [
     "pytest>=7.0",
     "ruff>=0.4",

@@ -1,26 +1,32 @@
-"""Lightweight experiment logging for RL runs.
+"""MLflow-backed experiment logging for RL runs.
 
 Why this exists
 ---------------
 You cannot debug what you cannot see. RL training fails *silently* far more
 often than it crashes: the loss looks fine, but the agent never improves. The
 only way to catch that is to **log scalar metrics every iteration and watch the
-curves**. This module gives you one object that fans those scalars out to three
-places at once:
+curves** -- and, just as importantly, to keep every run's hyperparameters,
+metrics, and checkpoints together so you can compare experiments later.
 
-* **stdout** -- so you notice immediately when something is off;
-* **a JSONL file** (``metrics.jsonl``) -- a dependency-free record you can load
-  later with pandas/matplotlib for custom plots or post-hoc analysis;
-* **TensorBoard** -- if it is installed, for live, zoomable curves.
+This project uses **MLflow** for that. MLflow is free, open-source, and runs
+entirely on your machine -- no account, no server to stand up. MLflow 3.x writes
+to a local ``mlflow.db`` (SQLite) plus an ``./mlartifacts/`` directory in your
+working directory; browse it by running ``mlflow ui`` from the project root. See
+``docs/monitoring.md`` for a full MLflow walkthrough and for *what* to log and
+how to read the curves.
 
-TensorBoard is the de-facto standard and is genuinely good for this: launch
-``tensorboard --logdir runs`` and you get live-updating plots of every scalar,
-grouped by name. It is optional here -- if it is not installed you still get
-stdout + JSONL, and nothing breaks. (Weights & Biases is a popular hosted
-alternative with nicer dashboards and experiment comparison; the same
-``log(step, metrics)`` shape ports to ``wandb.log`` almost verbatim.)
+This :class:`MetricsLogger` is a thin wrapper around MLflow that:
 
-See ``docs/monitoring.md`` for *what* to log and how to read the curves.
+* opens an MLflow **run** inside an **experiment** (a named bucket of runs);
+* logs your **hyperparameters** once (``log_params``);
+* logs **metrics by step** every iteration (``log``);
+* attaches **checkpoints / files** to the run (``log_artifact``);
+* also echoes metrics to **stdout** and mirrors them to a dependency-free
+  ``runs/<run_name>/metrics.jsonl`` file, so you always have a local record
+  even before MLflow is installed.
+
+If MLflow is not installed it degrades to stdout + JSONL and tells you how to
+install it -- nothing breaks.
 """
 
 from __future__ import annotations
@@ -32,45 +38,68 @@ from typing import Any
 
 
 class MetricsLogger:
-    """Fan scalar metrics out to stdout, a JSONL file, and (optionally) TensorBoard.
+    """Log params, metrics, and artifacts to MLflow (plus stdout + a JSONL mirror).
 
     Usage::
 
-        with MetricsLogger(run_name="ppo_v1") as logger:
+        with MetricsLogger(experiment="euchre-bot", run_name="ppo_v1",
+                           params={"agent": "ppo", "lr": 3e-4}) as logger:
             for it in range(iterations):
                 metrics = agent.learn(batch)
-                logger.log(it, metrics)                       # training metrics
-                if it % 20 == 0:
+                logger.log(it, metrics, prefix="train/")
+                if it % 25 == 0:
                     report = evaluate(agent, HeuristicAgent())
-                    logger.log(it, {"win_rate": report.win_rate,
-                                    "point_diff": report.avg_point_diff},
-                               prefix="eval/")
+                    logger.log(it, {"win_rate": report.win_rate}, prefix="eval/")
+                    agent.save("checkpoints/ppo_25.pt")
+                    logger.log_artifact("checkpoints/ppo_25.pt")
+
+    Then browse the results with ``mlflow ui`` (serves ``./mlruns`` at
+    http://localhost:5000).
     """
 
     def __init__(
         self,
-        logdir: str = "runs",
+        experiment: str = "euchre-bot",
         run_name: str | None = None,
-        use_tensorboard: bool = True,
+        params: dict[str, Any] | None = None,
+        tracking_uri: str | None = None,
+        local_mirror_dir: str = "runs",
         stdout: bool = True,
     ) -> None:
         run_name = run_name or time.strftime("%Y%m%d-%H%M%S")
-        self.dir = Path(logdir) / run_name
-        self.dir.mkdir(parents=True, exist_ok=True)
         self.stdout = stdout
-        self._jsonl = open(self.dir / "metrics.jsonl", "a")
-        self.writer = None
-        if use_tensorboard:
-            try:
-                from torch.utils.tensorboard import SummaryWriter
+        self._mlflow = None
 
-                self.writer = SummaryWriter(log_dir=str(self.dir))
-            except Exception:  # torch/tensorboard not installed -- degrade gracefully
-                print(
-                    "[MetricsLogger] TensorBoard unavailable; logging to stdout + "
-                    f"{self.dir / 'metrics.jsonl'} only. "
-                    "Install with: pip install tensorboard"
-                )
+        # Dependency-free local mirror, so you always have a record on disk.
+        self._dir = Path(local_mirror_dir) / run_name
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._jsonl = open(self._dir / "metrics.jsonl", "a")
+
+        try:
+            import mlflow
+
+            self._mlflow = mlflow
+        except ImportError:
+            print(
+                "[MetricsLogger] mlflow not installed; logging to stdout + "
+                f"{self._dir / 'metrics.jsonl'} only. Install with: pip install mlflow"
+            )
+
+        if self._mlflow is not None:
+            if tracking_uri is not None:
+                self._mlflow.set_tracking_uri(tracking_uri)
+            self._mlflow.set_experiment(experiment)
+            self._mlflow.start_run(run_name=run_name)
+            if params:
+                self.log_params(params)
+
+    def log_params(self, params: dict[str, Any]) -> None:
+        """Record the run's hyperparameters once (e.g. lr, gamma, clip_eps, seed)."""
+        if self._mlflow is not None:
+            self._mlflow.log_params(params)
+        if self.stdout:
+            body = "  ".join(f"{k}={v}" for k, v in params.items())
+            print(f"[params] {body}")
 
     def log(self, step: int, metrics: dict[str, Any], prefix: str = "") -> None:
         """Record a dict of scalar metrics at ``step`` (e.g. iteration number)."""
@@ -79,17 +108,23 @@ class MetricsLogger:
             return
         self._jsonl.write(json.dumps({"step": step, **flat}) + "\n")
         self._jsonl.flush()
-        if self.writer is not None:
-            for key, value in flat.items():
-                self.writer.add_scalar(key, value, step)
+        if self._mlflow is not None:
+            # MLflow allows '/' in metric keys, so our "eval/win_rate" naming
+            # groups nicely in the UI.
+            self._mlflow.log_metrics(flat, step=step)
         if self.stdout:
             body = "  ".join(f"{k}={v:.4f}" for k, v in flat.items())
             print(f"[step {step:>5}] {body}")
 
+    def log_artifact(self, path: str) -> None:
+        """Attach a file (e.g. a checkpoint) to the current MLflow run."""
+        if self._mlflow is not None:
+            self._mlflow.log_artifact(path)
+
     def close(self) -> None:
         self._jsonl.close()
-        if self.writer is not None:
-            self.writer.close()
+        if self._mlflow is not None and self._mlflow.active_run() is not None:
+            self._mlflow.end_run()
 
     def __enter__(self) -> MetricsLogger:
         return self

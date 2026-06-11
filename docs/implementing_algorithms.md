@@ -98,11 +98,12 @@ tutorials; don't be discouraged if PPO ends up your best player.
 ## How you'll know it's working
 
 Wire your agent into `examples/train.py` (just pass `--agent ppo`) and watch
-`eval_vs_random/win_rate` and `eval_vs_heuristic/win_rate` in TensorBoard. The
-canonical healthy story: win-rate vs random climbs first and fast, then
-win-rate vs heuristic crosses 0.5 and keeps climbing. Self-play reward hovering
-near zero is expected and tells you nothing — always read the *eval* curves.
-See `docs/rl_best_practices.md` for the failure-mode catalogue.
+`eval_vs_random/win_rate` and `eval_vs_heuristic/win_rate` in the MLflow UI
+(`mlflow ui`). The canonical healthy story: win-rate vs random climbs first and
+fast, then win-rate vs heuristic crosses 0.5 and keeps climbing. Self-play
+reward hovering near zero is expected and tells you nothing — always read the
+*eval* curves. See `docs/monitoring.md` for the MLflow workflow and
+`docs/rl_best_practices.md` for the failure-mode catalogue.
 
 ## A note on self-play dynamics
 
