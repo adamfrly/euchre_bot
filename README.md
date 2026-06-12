@@ -86,3 +86,4 @@ the fixed baselines, never by self-play reward or training loss** — see
 | [`docs/implementing_algorithms.md`](docs/implementing_algorithms.md) | **Step-by-step guide to the part you build** |
 | [`docs/monitoring.md`](docs/monitoring.md) | Observing/analyzing runs with MLflow (install, log, compare, registry) |
 | [`docs/rl_best_practices.md`](docs/rl_best_practices.md) | General practices for writing RL projects |
+| [`docs/roadmap.md`](docs/roadmap.md) | Future improvements (PIMC final boss, CFR, hybrid RL, variants) |
