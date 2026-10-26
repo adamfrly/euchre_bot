@@ -74,6 +74,10 @@ class EuchreEnv:
         reward_mode: ``"zero_sum"`` (default) gives the scoring team ``+points``
             and the other team ``-points``; ``"team"`` gives the scoring team
             ``+points`` and the other team ``0``.
+        random_scores: If ``True``, each :meth:`reset` that isn't handed explicit
+            ``scores`` draws a random game score (0-9 per team), so a policy
+            trained on single hands still learns the observation's score
+            features before it is played in full games.
         seed: Optional seed for the internal random generator.
     """
 
@@ -82,6 +86,7 @@ class EuchreEnv:
         stick_the_dealer: bool = True,
         allow_going_alone: bool = True,
         reward_mode: str = "zero_sum",
+        random_scores: bool = False,
         seed: int | None = None,
     ) -> None:
         if reward_mode not in ("zero_sum", "team"):
@@ -89,6 +94,7 @@ class EuchreEnv:
         self.stick_the_dealer = stick_the_dealer
         self.allow_going_alone = allow_going_alone
         self.reward_mode = reward_mode
+        self.random_scores = random_scores
 
         self._rng = np.random.default_rng(seed)
         self._scores = [0, 0]          # running game score (placeholder for full-game play)
@@ -102,13 +108,27 @@ class EuchreEnv:
     # Episode lifecycle
     # ------------------------------------------------------------------ #
 
-    def reset(self, seed: int | None = None, dealer: int | None = None) -> StepResult:
-        """Start a new hand and return the first player's observation."""
+    def reset(
+        self,
+        seed: int | None = None,
+        dealer: int | None = None,
+        scores: tuple[int, int] | list[int] | None = None,
+    ) -> StepResult:
+        """Start a new hand and return the first player's observation.
+
+        ``scores`` is the running game score by team, shown to agents in their
+        observation; it does not change the hand's rewards.
+        """
         if seed is not None:
             self._rng = np.random.default_rng(seed)
         if dealer is None:
             dealer = int(self._rng.integers(NUM_PLAYERS))
-        self._scores = [0, 0]
+        if scores is not None:
+            self._scores = list(scores)
+        elif self.random_scores:
+            self._scores = [int(x) for x in self._rng.integers(0, 10, size=2)]
+        else:
+            self._scores = [0, 0]
         self._deal(dealer)
         return self._observe()
 

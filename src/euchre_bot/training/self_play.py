@@ -42,15 +42,18 @@ def play_episode(
     *,
     deterministic: bool = False,
     seed: int | None = None,
+    dealer: int | None = None,
+    scores: tuple[int, int] | list[int] | None = None,
 ) -> tuple[dict[int, Trajectory], dict]:
     """Play one full hand. Return ``(trajectories_by_seat, terminal_info)``.
 
     A seat's trajectory is the list of decisions it made this hand, with the
     sparse terminal reward written onto its final transition. A lone maker's
-    partner makes no decisions and so has an empty trajectory.
+    partner makes no decisions and so has an empty trajectory. ``dealer`` and
+    ``scores`` (the running game score) are passed through to ``env.reset``.
     """
     seating = _as_seating(agents)
-    result = env.reset(seed=seed)
+    result = env.reset(seed=seed, dealer=dealer, scores=scores)
     trajectories: dict[int, Trajectory] = {seat: [] for seat in range(NUM_PLAYERS)}
 
     while not result.terminated:
