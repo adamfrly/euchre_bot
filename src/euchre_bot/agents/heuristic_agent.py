@@ -94,10 +94,11 @@ class HeuristicAgent(Agent):
         return A.PASS
 
     def _bid_round_2(self, view: PlayerView) -> int:
-        forbidden = view.upcard.suit if view.upcard is not None else None
+        # The turned-down card is hidden by round 2, so read the callable suits off
+        # the legal actions rather than the (now ``None``) up-card.
         best_suit, best_strength = None, -1
         for suit in Suit:
-            if suit == forbidden:
+            if A.call_suit_action(suit, alone=False) not in view.legal_actions:
                 continue
             strength = _suit_strength(view.hand, suit)
             if strength > best_strength:
