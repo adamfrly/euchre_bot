@@ -35,6 +35,18 @@ Euchre-specific notes
   per update and run ~4-10 epochs over them.
 * Standard, robust hyperparameters: clip eps 0.2, gamma 0.99, lambda 0.95,
   lr 3e-4, entropy 0.01, value_coef 0.5, a couple of minibatches.
+* **Going-alone exploration.** Going alone is only right on very strong hands,
+  so early on it looks like a losing action, its probability collapses, and the
+  agent never discovers the 4-point lone march. ``alone_explore`` mixes a small,
+  annealed probability epsilon of "go alone" (uniform over the legal alone
+  calls) into the policy itself:
+
+      pi'(a|s) = (1 - eps) * pi(a|s) + eps * uniform_alone(a|s)
+
+  Because the *same* mixture is used to act and to compute log-probs in
+  ``learn``, PPO stays exactly on-policy. Epsilon only changes after an update,
+  never between collection and learning. Evaluation (``deterministic=True``)
+  ignores the mixture.
 
 References
 ---------
@@ -52,8 +64,11 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 from ..agents.base import Agent, Trajectory
+from ..engine import actions as A
 from ..env.euchre_env import EuchreEnv
 from .a2c import ActorCritic
+
+ALONE_ACTIONS = [A.ORDER_UP_ALONE] + [A.CALL_SUIT_ALONE_BASE + suit for suit in range(4)]
 
 
 class PPOAgent(Agent):
@@ -72,6 +87,8 @@ class PPOAgent(Agent):
         entropy_coef: float = 0.01,
         max_grad_norm: float = 0.5,
         target_kl: float | None = 0.03,
+        alone_explore: float = 0.0,
+        alone_explore_updates: int = 0,
         device: str = "cpu",
         seed: int | None = None,
     ) -> None:
@@ -84,6 +101,11 @@ class PPOAgent(Agent):
         self.entropy_coef = entropy_coef
         self.max_grad_norm = max_grad_norm
         self.target_kl = target_kl
+        # Going-alone exploration: start at `alone_explore`, decay linearly to 0
+        # over `alone_explore_updates` learn() calls (0 means never decay).
+        self.alone_explore = alone_explore
+        self.alone_explore_updates = alone_explore_updates
+        self.updates_done = 0
         self.device = torch.device(device)
         self.n_actions = n_actions
         if seed is not None:
@@ -91,6 +113,28 @@ class PPOAgent(Agent):
 
         self.net = ActorCritic(obs_dim, n_actions, hidden_dim).to(self.device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr, eps=1e-5)
+        self._alone_mask = torch.zeros(n_actions, dtype=torch.bool, device=self.device)
+        self._alone_mask[ALONE_ACTIONS] = True
+
+    @property
+    def alone_epsilon(self) -> float:
+        if self.alone_explore_updates <= 0:
+            return self.alone_explore
+        frac = min(1.0, self.updates_done / self.alone_explore_updates)
+        return self.alone_explore * (1.0 - frac)
+
+    def _distribution(self, logits: torch.Tensor, mask: torch.Tensor) -> Categorical:
+        """The masked policy, mixed with going-alone exploration when it is on."""
+        logits = logits.masked_fill(~mask, float("-inf"))
+        eps = self.alone_epsilon
+        if eps <= 0.0:
+            return Categorical(logits=logits)
+        alone_legal = (mask & self._alone_mask).float()
+        n_alone = alone_legal.sum(-1, keepdim=True)
+        # Only mix where some alone call is legal (i.e. during bidding).
+        mix = eps * (n_alone > 0).float()
+        probs = (1.0 - mix) * torch.softmax(logits, -1) + mix * alone_legal / n_alone.clamp(min=1)
+        return Categorical(probs=probs)
 
     # ------------------------------------------------------------------ #
     # Acting
@@ -101,10 +145,9 @@ class PPOAgent(Agent):
             obs = torch.as_tensor(observation, dtype=torch.float32, device=self.device)
             mask = torch.as_tensor(action_mask, dtype=torch.bool, device=self.device)
             logits, _ = self.net(obs)
-            logits = logits.masked_fill(~mask, float("-inf"))
             if deterministic:
-                return int(torch.argmax(logits).item())
-            return int(Categorical(logits=logits).sample().item())
+                return int(torch.argmax(logits.masked_fill(~mask, float("-inf"))).item())
+            return int(self._distribution(logits, mask).sample().item())
 
     # ------------------------------------------------------------------ #
     # Learning
@@ -138,9 +181,7 @@ class PPOAgent(Agent):
         # Snapshot the behaviour policy's log-probs and values before any update.
         with torch.no_grad():
             logits, values = self.net(obs_t)
-            old_log_probs = Categorical(
-                logits=logits.masked_fill(~mask_t, float("-inf"))
-            ).log_prob(action_t)
+            old_log_probs = self._distribution(logits, mask_t).log_prob(action_t)
         values_np = values.cpu().numpy()
 
         # GAE per trajectory, using that trajectory's slice of the value array.
@@ -166,7 +207,7 @@ class PPOAgent(Agent):
             epoch_kls: list[float] = []
             for idx in torch.randperm(n, device=self.device).split(self.minibatch_size):
                 logits, new_values = self.net(obs_t[idx])
-                dist = Categorical(logits=logits.masked_fill(~mask_t[idx], float("-inf")))
+                dist = self._distribution(logits, mask_t[idx])
                 new_log_probs = dist.log_prob(action_t[idx])
                 entropy = dist.entropy().mean()
 
@@ -205,6 +246,10 @@ class PPOAgent(Agent):
         metrics = {k: v / updates for k, v in stats.items()}
         metrics["epochs"] = float(epochs_run)
         metrics["transitions"] = float(n)
+        metrics["alone_epsilon"] = self.alone_epsilon
+        alone_taken = torch.isin(action_t, torch.as_tensor(ALONE_ACTIONS, device=self.device))
+        metrics["alone_rate"] = float(alone_taken.float().mean().item())
+        self.updates_done += 1
         return metrics
 
     # ------------------------------------------------------------------ #
