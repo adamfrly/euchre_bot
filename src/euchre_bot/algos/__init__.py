@@ -1,16 +1,14 @@
 """Learning agents.
 
-``reinforce`` is a **fully-worked reference example** -- read it and run it.
-``a2c``, ``ppo``, and ``dqn`` are **stubs for you to implement**, building on the
-REINFORCE skeleton. Suggested order, easiest to hardest:
+``reinforce`` is the simplest, fully-commented reference; ``a2c`` adds a learned
+value baseline, ``ppo`` adds clipped multi-epoch updates and GAE, and ``dqn`` is
+the value-based, off-policy alternative. Easiest to hardest:
 
-    reinforce (done) -> a2c -> ppo -> dqn
+    reinforce -> a2c -> ppo -> dqn
 
-Each module subclasses :class:`euchre_bot.agents.base.Agent`, so a finished
-agent drops straight into :func:`euchre_bot.training.train` and
-:func:`euchre_bot.training.evaluate`. The stubs contain the algorithm's
-intuition, the precise update recipe, the Euchre-specific masking gotchas, and
-``# TODO(you)`` markers. The companion guide is
+Each module subclasses :class:`euchre_bot.agents.base.Agent`, so every agent
+drops straight into :func:`euchre_bot.training.train` and
+:func:`euchre_bot.training.evaluate`. The companion guide is
 ``docs/implementing_algorithms.md``.
 
 Importing this package requires ``torch`` (install the ``learn`` extra). The
