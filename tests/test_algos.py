@@ -110,3 +110,42 @@ def test_dqn_pairs_next_states_within_a_trajectory():
         np.testing.assert_array_equal(buf.next_masks[0], first[1].action_mask > 0)
         assert buf.dones[0] == 0.0
 
+
+def test_ppo_alone_exploration_mixes_only_legal_alone_calls():
+    import torch
+
+    from euchre_bot.algos.ppo import ALONE_ACTIONS
+    from euchre_bot.engine import actions as A
+
+    agent = PPOAgent(alone_explore=0.2, seed=0)
+    logits = torch.zeros(2, agent.n_actions)
+    mask = torch.zeros(2, agent.n_actions, dtype=torch.bool)
+    mask[0, [A.PASS, A.ORDER_UP, A.ORDER_UP_ALONE]] = True   # round-1 bid
+    mask[1, [A.CARD_BASE, A.CARD_BASE + 1]] = True           # playing a card
+    probs = agent._distribution(logits, mask).probs
+
+    # Bid: uniform 1/3 each, plus all 0.2 of exploration on the one alone call.
+    expected_bid = 0.8 / 3
+    assert torch.isclose(probs[0, A.PASS], torch.tensor(expected_bid))
+    assert torch.isclose(probs[0, A.ORDER_UP_ALONE], torch.tensor(expected_bid + 0.2))
+    # Card play: no alone call is legal, so no mixing.
+    assert torch.allclose(probs[1, [A.CARD_BASE, A.CARD_BASE + 1]], torch.tensor([0.5, 0.5]))
+    assert probs[:, ~mask.any(0)].sum() == 0
+    assert set(ALONE_ACTIONS) == {A.ORDER_UP_ALONE, *range(A.CALL_SUIT_ALONE_BASE, 11)}
+
+
+def test_ppo_alone_exploration_decays_and_is_off_when_deterministic():
+    env = EuchreEnv(seed=6)
+    agent = PPOAgent(alone_explore=0.5, alone_explore_updates=2, seed=0)
+    assert agent.alone_epsilon == 0.5
+    agent.learn(collect_batch(env, agent, num_episodes=4))
+    assert agent.alone_epsilon == 0.25
+    agent.learn(collect_batch(env, agent, num_episodes=4))
+    assert agent.alone_epsilon == 0.0
+
+    # Greedy action ignores the mixture entirely.
+    explorer = PPOAgent(alone_explore=1.0, seed=0)
+    plain = PPOAgent(seed=0)
+    result = env.reset(seed=6)
+    args = (result.observation, result.action_mask)
+    assert explorer.act(*args, deterministic=True) == plain.act(*args, deterministic=True)
