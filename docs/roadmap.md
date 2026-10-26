@@ -1,6 +1,45 @@
 # Roadmap / future improvements
 
-Ideas captured for later, not yet built. Ordered roughly by value-for-effort.
+## Next steps (from the v1/v2 experiments)
+
+Prioritised by what the experiments in [`experiments.md`](experiments.md)
+point to. The current best agents are `runs/ppo_league_noalone_v2/best.pt` and
+`runs/ppo_league_v2_s1/best.pt`; they are statistically tied.
+
+1. **Give the observation history.** This is the main lever left. Card play
+   has not improved past the heuristic in any run: defence, overtaking a
+   partner, and follow-suit choices are all unchanged. Add:
+   * who played which card in each completed trick, so the agent can infer
+     voids and read its partner;
+   * the bidding history: who passed, who ordered up or called, and in which
+     round;
+   * the turned-down card during round 2, which `PlayerView` currently hides
+     (`upcard` is ``None`` once it is turned down).
+
+   Changing `OBS_DIM` invalidates old checkpoints. Retrain, and keep the
+   previous champion as a score-blind / dimension-adapted gauntlet entry, or
+   drop it.
+2. **Make going alone learnable by splitting the bid decision.** Replace the
+   flat "call suit X alone" actions with a two-step decision: *call?* and then
+   *alone?*, each with its own head and entropy bonus. A binary alone head
+   cannot collapse the way a single rare action in a 35-way softmax did. The
+   mixture exploration in `PPOAgent(alone_explore=...)` collected lone-hand data
+   but couldn't move the near-zero base probability (see experiments.md). It is
+   worth +1.15 pts on hands strong enough to go alone.
+3. **Keep the training setup that worked.** Use `--opponent league
+   --random-scores` and the evaluation gauntlet, with `eval_gauntlet/point_diff`
+   as the headline metric. Promote the newest best bot to `--champion` each
+   round.
+4. **Run 2-3 seeds per configuration.** The differences between variants are
+   now around 0.02-0.05 pts/hand, about the noise of one run and one eval.
+   Re-test the finalists on fresh deals with `evaluate` / `evaluate_games`
+   before drawing conclusions.
+5. **Then scale up.** Train longer with a wider network. v2 runs plateaued
+   around iterations 4,000-5,000 at the current size.
+
+## Longer-term ideas
+
+Captured for later, not yet built. Ordered roughly by value-for-effort.
 
 ## 1. PIMC "final boss" agent (Perfect-Information Monte Carlo)
 
@@ -52,9 +91,9 @@ let the learning agents surpass the PIMC final boss.
 
 ## Smaller items
 
-- **Full-game wrapper** (play hands to 10 points) on top of the per-hand episode,
-  using the observation's reserved game-score slot.
-- **Frozen-opponent pool** for self-play stability (sample past checkpoints as
-  opponents to avoid the policy chasing its own tail).
+- **Full-game training** (episodes of hands to 10 points, rewarded on game
+  outcome). Full-game *evaluation* exists (`evaluate_games`), and
+  `--random-scores` teaches the score features, but training is still per hand.
+- ~~Frozen-opponent pool~~: done as `training/league.py` (`--opponent league`).
 - **Additional variants**: no-trump, farmer's hand, screw-the-dealer, 3/6-handed
   — the rules are isolated enough (`engine/rules.py`, env flags) to add cleanly.
