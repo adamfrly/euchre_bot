@@ -14,6 +14,7 @@ dist/
 
 # Experiment outputs
 runs/
+logs/
 mlruns/
 mlartifacts/
 mlflow.db
@@ -26,3 +27,6 @@ data/
 rlpractice/
 OpenAI_Practice/
 old_attempt/
+
+# Isaac
+/.isaac/
