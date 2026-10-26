@@ -46,6 +46,19 @@ def _suit_strength(hand: list[Card], trump: Suit) -> int:
 
 
 class HeuristicAgent(Agent):
+    """Rule-of-thumb player. The thresholds tune how aggressively it bids.
+
+    The defaults call trump on fairly weak hands, which a learner can exploit by
+    passing and euchring; tighter variants (e.g. ``call_threshold=5``) make a
+    sterner, more varied set of opponents and benchmarks.
+    """
+
+    def __init__(
+        self, call_threshold: int = _CALL_THRESHOLD, alone_threshold: int = _ALONE_THRESHOLD
+    ) -> None:
+        self.call_threshold = call_threshold
+        self.alone_threshold = alone_threshold
+
     def act(
         self,
         observation: np.ndarray,
@@ -74,9 +87,9 @@ class HeuristicAgent(Agent):
         if view.seat == view.dealer:  # the dealer would gain the up-card
             hand = hand + [view.upcard]
         strength = _suit_strength(hand, candidate)
-        if A.ORDER_UP_ALONE in view.legal_actions and strength >= _ALONE_THRESHOLD:
+        if A.ORDER_UP_ALONE in view.legal_actions and strength >= self.alone_threshold:
             return A.ORDER_UP_ALONE
-        if strength >= _CALL_THRESHOLD:
+        if strength >= self.call_threshold:
             return A.ORDER_UP
         return A.PASS
 
@@ -91,9 +104,9 @@ class HeuristicAgent(Agent):
                 best_suit, best_strength = suit, strength
 
         can_pass = A.PASS in view.legal_actions  # False when stuck as dealer
-        if can_pass and best_strength < _CALL_THRESHOLD:
+        if can_pass and best_strength < self.call_threshold:
             return A.PASS
-        alone = best_strength >= _ALONE_THRESHOLD
+        alone = best_strength >= self.alone_threshold
         action = A.call_suit_action(best_suit, alone=alone)
         # Going alone may be disabled; fall back to the partnered call.
         if action in view.legal_actions:
